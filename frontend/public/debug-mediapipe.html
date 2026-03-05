@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>MediaPipe Debug Tool</title>
+<style>
+  body { font-family: monospace; background: #0a0a0f; color: #00f5ff; padding: 20px; }
+  h2 { color: #ffd700; }
+  .step { margin: 12px 0; padding: 12px; border-radius: 8px; background: #111; border-left: 3px solid #333; }
+  .ok   { border-left-color: #00ff88; color: #00ff88; }
+  .fail { border-left-color: #ff4466; color: #ff4466; }
+  .warn { border-left-color: #ffd700; color: #ffd700; }
+  .info { border-left-color: #00f5ff; color: #00f5ff; }
+  button { padding: 10px 24px; margin: 6px; border-radius: 8px; border: none; cursor: pointer;
+    font-family: monospace; font-size: 14px; font-weight: bold; }
+  .btn-run  { background: #00f5ff; color: #000; }
+  .btn-cam  { background: #bf00ff; color: #fff; }
+  .btn-clear{ background: #333; color: #aaa; }
+  #log { margin-top: 20px; max-height: 500px; overflow-y: auto; }
+  pre  { white-space: pre-wrap; word-break: break-all; }
+</style>
+</head>
+<body>
+<h2>🔬 MediaPipe + Camera Debug Tool</h2>
+<p style="color:#aaa;font-size:13px">
+  Open this file directly in Chrome at <code>localhost:5173</code> — or just paste this in DevTools Console.
+</p>
+
+<button class="btn-run"   onclick="runAllTests()">▶ Run All Tests</button>
+<button class="btn-cam"   onclick="testCamera()">📷 Test Camera Only</button>
+<button class="btn-clear" onclick="clearLog()">Clear</button>
+
+<div id="log"></div>
+
+<script>
+const log = (msg, type='info') => {
+  const d = document.getElementById('log')
+  const el = document.createElement('div')
+  el.className = `step ${type}`
+  el.innerHTML = `<pre>${msg}</pre>`
+  d.appendChild(el)
+  d.scrollTop = d.scrollHeight
+  console.log(`[DEBUG][${type.toUpperCase()}]`, msg)
+}
+
+const clearLog = () => { document.getElementById('log').innerHTML = '' }
+
+async function runAllTests() {
+  clearLog()
+  log('=== MediaPipe + Camera Debug ===', 'info')
+  log(`URL: ${location.href}`, location.protocol==='https:'?'ok':'warn')
+  log(`Protocol: ${location.protocol} ${location.protocol==='https:'?'✅ HTTPS (camera will work)':'⚠️ HTTP (camera needs Chrome flag OR HTTPS)'}`,
+      location.protocol==='https:'?'ok':'warn')
+
+  // 1. Check if camera permission
+  log('\n--- 1. Camera Permission ---', 'info')
+  try {
+    const perm = await navigator.permissions.query({name:'camera'})
+    log(`Camera permission state: ${perm.state}`,
+        perm.state==='granted'?'ok':perm.state==='denied'?'fail':'warn')
+    if (perm.state === 'denied') {
+      log('FIX: Click the 🔒 padlock → Camera → Allow → Reload page', 'fail')
+    }
+  } catch(e) { log(`Permission API error: ${e.message}`, 'warn') }
+
+  // 2. Try getUserMedia
+  log('\n--- 2. getUserMedia Test ---', 'info')
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({video:true, audio:false})
+    const track = stream.getVideoTracks()[0]
+    log(`✅ Camera works! Track: ${track.label}`, 'ok')
+    log(`   Settings: ${JSON.stringify(track.getSettings())}`, 'ok')
+    stream.getTracks().forEach(t => t.stop())
+  } catch(e) {
+    log(`❌ getUserMedia failed: ${e.name} — ${e.message}`, 'fail')
+    if (e.name === 'NotAllowedError') log('FIX: Allow camera in browser permissions (padlock icon)', 'fail')
+    if (e.name === 'NotFoundError')   log('FIX: No camera detected on this device', 'fail')
+    if (e.name === 'NotReadableError')log('FIX: Camera in use by another app (close Teams/Zoom/etc)', 'fail')
+  }
+
+  // 3. Load MediaPipe script
+  log('\n--- 3. MediaPipe Script Load ---', 'info')
+  const VERSION = '0.4.1675469240'
+  const SOURCES = [
+    `https://unpkg.com/@mediapipe/hands@${VERSION}/hands.js`,
+    `https://cdn.jsdelivr.net/npm/@mediapipe/hands@${VERSION}/hands.js`,
+  ]
+
+  for (const src of SOURCES) {
+    log(`Trying: ${src}`, 'info')
+    try {
+      await new Promise((res, rej) => {
+        // Remove previous test scripts
+        document.querySelectorAll('script[data-mp-test]').forEach(s=>s.remove())
+        // Reset Hands so we can test loading again
+        delete window.Hands
+        const s = document.createElement('script')
+        s.src = src
+        s.setAttribute('data-mp-test','1')
+        s.onload = () => {
+          log(`  Script loaded ✅`, 'ok')
+          // Poll for window.Hands
+          let polls = 0
+          const check = setInterval(()=>{
+            polls++
+            if (typeof window.Hands !== 'undefined') {
+              clearInterval(check)
+              log(`  window.Hands appeared after ${polls*100}ms ✅`, 'ok')
+              log(`  typeof window.Hands = ${typeof window.Hands}`, 'ok')
+              res()
+            } else if (polls > 60) {
+              clearInterval(check)
+              log(`  ❌ window.Hands never appeared (6s timeout)`, 'fail')
+              rej(new Error('Hands timeout'))
+            }
+          }, 100)
+        }
+        s.onerror = () => { log(`  ❌ Script load failed (network/CORS error)`, 'fail'); rej(new Error('load failed')) }
+        document.head.appendChild(s)
+      })
+
+      // Test instantiation
+      log(`  Testing new window.Hands(...)`, 'info')
+      const hands = new window.Hands({
+        locateFile: f => `https://unpkg.com/@mediapipe/hands@${VERSION}/${f}`
+      })
+      hands.setOptions({maxNumHands:1, modelComplexity:0, minDetectionConfidence:0.5, minTrackingConfidence:0.5})
+      log(`  ✅ Hands instance created! MediaPipe is working from: ${src}`, 'ok')
+      log(`\n🎉 SUCCESS — This CDN works. Make sure your game uses:\n  locateFile: f => \`https://unpkg.com/@mediapipe/hands@${VERSION}/\${f}\``, 'ok')
+      break
+
+    } catch(e) {
+      log(`  Source failed: ${e.message} — trying next...`, 'warn')
+    }
+  }
+
+  log('\n--- 4. Chrome Flags Check ---', 'info')
+  if (location.protocol === 'http:' && location.hostname === 'localhost') {
+    log(`You're on HTTP localhost. Camera may work if you have enabled:
+chrome://flags/#unsafely-treat-insecure-origin-as-secure
+  → Add: http://localhost:5173
+  → Set: Enabled`, 'warn')
+  }
+
+  log('\n=== Done ===', 'info')
+}
+
+async function testCamera() {
+  clearLog()
+  log('Testing camera only...', 'info')
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({video:true})
+    const v = document.createElement('video')
+    v.srcObject = stream; v.autoplay = true; v.muted = true
+    v.style.cssText = 'width:320px;height:240px;border:2px solid #00f5ff;border-radius:8px;display:block;margin:12px 0'
+    document.getElementById('log').appendChild(v)
+    log('✅ Camera working — you should see feed above', 'ok')
+    log('Click "Run All Tests" to also test MediaPipe', 'ok')
+  } catch(e) {
+    log(`❌ ${e.name}: ${e.message}`, 'fail')
+  }
+}
+</script>
+</body>
+</html>

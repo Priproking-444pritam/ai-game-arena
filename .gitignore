@@ -1,0 +1,21 @@
+# Dependencies — never upload these, npm install recreates them
+node_modules/
+*/node_modules/
+
+# Environment files — these contain your secrets!
+.env
+.env.local
+.env.production
+backend/.env
+
+# Build output
+dist/
+build/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
