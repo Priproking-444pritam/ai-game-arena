@@ -13,8 +13,7 @@ const scoreSchema = new mongoose.Schema({
   game: {
     type: String,
     required: true,
-    // AFTER:
-    enum: ['snake', 'sudoku', 'connect4', 'maze', 'nqueens', 'handslicer', 'handrhythm']
+    enum: ['snake', 'sudoku', 'connect4', 'maze', 'nqueens', 'handslicer', 'handrhythm', 'tictactoe', 'trivia', 'chess']
   },
   score: {
     type: Number,

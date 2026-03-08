@@ -2,676 +2,714 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth, API } from '../context/AuthContext'
 import toast from 'react-hot-toast'
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// ─── AI Logic ─────────────────────────────────────────────────────────────────
 const WIN_LINES = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]]
-const POLL_MS   = 1800   // poll every 1.8s
 
-// ─── AI helpers ───────────────────────────────────────────────────────────────
 function checkWinner(b) {
-  for (const [a,c,d] of WIN_LINES)
-    if (b[a] && b[a]===b[c] && b[a]===b[d]) return { winner:b[a], line:[a,c,d] }
-  if (b.every(Boolean)) return { winner:'draw', line:[] }
+  for (const [a,c,d] of WIN_LINES) if (b[a] && b[a]===b[c] && b[a]===b[d]) return { winner:b[a], line:[a,c,d] }
+  if (b.every(v=>v!=='')) return { winner:'draw', line:[] }
   return null
 }
+
 function minimax(board, isMax, depth, alpha, beta, maxDepth) {
   const res = checkWinner(board)
   if (res) { if(res.winner==='O') return 10-depth; if(res.winner==='X') return depth-10; return 0 }
   if (depth>=maxDepth) return 0
   if (isMax) {
     let best=-Infinity
-    for(let i=0;i<9;i++) if(!board[i]){board[i]='O';best=Math.max(best,minimax(board,false,depth+1,alpha,beta,maxDepth));board[i]=null;alpha=Math.max(alpha,best);if(beta<=alpha)break}
+    for(let i=0;i<9;i++) if(!board[i]){ board[i]='O'; best=Math.max(best,minimax(board,false,depth+1,alpha,beta,maxDepth)); board[i]=null; alpha=Math.max(alpha,best); if(beta<=alpha)break }
     return best
   } else {
     let best=Infinity
-    for(let i=0;i<9;i++) if(!board[i]){board[i]='X';best=Math.min(best,minimax(board,true,depth+1,alpha,beta,maxDepth));board[i]=null;beta=Math.min(beta,best);if(beta<=alpha)break}
+    for(let i=0;i<9;i++) if(!board[i]){ board[i]='X'; best=Math.min(best,minimax(board,true,depth+1,alpha,beta,maxDepth)); board[i]=null; beta=Math.min(beta,best); if(beta<=alpha)break }
     return best
   }
 }
-function getBestMove(board, difficulty) {
-  const empty = board.map((v,i)=>v?null:i).filter(i=>i!==null)
-  if (!empty.length) return -1
-  if (difficulty==='easy' && Math.random()<0.6) return empty[Math.floor(Math.random()*empty.length)]
-  if (difficulty==='medium' && Math.random()<0.3) return empty[Math.floor(Math.random()*empty.length)]
-  const maxD = difficulty==='easy'?2:difficulty==='medium'?4:9
-  let best=-Infinity, move=empty[0]
-  for (const i of empty) {
-    board[i]='O'
-    const s=minimax(board,false,0,-Infinity,Infinity,maxD)
-    board[i]=null
-    if(s>best){best=s;move=i}
-  }
+function getBestMove(board, diff) {
+  const empty=board.map((v,i)=>v?null:i).filter(i=>i!==null); if(!empty.length)return -1
+  const rand=Math.random()
+  if(diff==='easy'&&rand<0.6) return empty[Math.floor(Math.random()*empty.length)]
+  if(diff==='medium'&&rand<0.3) return empty[Math.floor(Math.random()*empty.length)]
+  const maxD=diff==='easy'?2:diff==='medium'?4:9
+  let best=-Infinity,move=empty[0]
+  for(const i of empty){ board[i]='O'; const s=minimax(board,false,0,-Infinity,Infinity,maxD); board[i]=null; if(s>best){best=s;move=i} }
   return move
 }
 
-// ─── Symbols with neon colours ────────────────────────────────────────────────
-function XSymbol({ size=36 }) {
+// ─── Styles ───────────────────────────────────────────────────────────────────
+const CLR = { X:'#00f5ff', O:'#ff0066', draw:'#ffd700' }
+const DIFF_INFO = {
+  easy:   { label:'Easy',   color:'#00ff88' },
+  medium: { label:'Medium', color:'#ffd700' },
+  hard:   { label:'Hard',   color:'#ff4466' },
+}
+
+// ─── Colourful Logo ───────────────────────────────────────────────────────────
+function TicTacToeLogo({ size=52 }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 36 36">
-      <line x1="6" y1="6" x2="30" y2="30" stroke="#00f5ff" strokeWidth="4" strokeLinecap="round"/>
-      <line x1="30" y1="6" x2="6" y2="30" stroke="#00f5ff" strokeWidth="4" strokeLinecap="round"/>
+    <svg width={size} height={size} viewBox="0 0 100 100" fill="none">
+      {/* Grid lines */}
+      <line x1="33" y1="5"  x2="33" y2="95" stroke="#444" strokeWidth="4" strokeLinecap="round"/>
+      <line x1="67" y1="5"  x2="67" y2="95" stroke="#444" strokeWidth="4" strokeLinecap="round"/>
+      <line x1="5"  y1="33" x2="95" y2="33" stroke="#444" strokeWidth="4" strokeLinecap="round"/>
+      <line x1="5"  y1="67" x2="95" y2="67" stroke="#444" strokeWidth="4" strokeLinecap="round"/>
+      {/* X - top-left */}
+      <line x1="10" y1="10" x2="26" y2="26" stroke="#00f5ff" strokeWidth="5" strokeLinecap="round"/>
+      <line x1="26" y1="10" x2="10" y2="26" stroke="#00f5ff" strokeWidth="5" strokeLinecap="round"/>
+      {/* O - top-center */}
+      <circle cx="50" cy="17" r="9" stroke="#ff0066" strokeWidth="5" fill="none"/>
+      {/* X - top-right */}
+      <line x1="74" y1="10" x2="90" y2="26" stroke="#00f5ff" strokeWidth="5" strokeLinecap="round"/>
+      <line x1="90" y1="10" x2="74" y2="26" stroke="#00f5ff" strokeWidth="5" strokeLinecap="round"/>
+      {/* O - mid-left */}
+      <circle cx="17" cy="50" r="9" stroke="#ff0066" strokeWidth="5" fill="none"/>
+      {/* X - center (winning) */}
+      <line x1="41" y1="41" x2="59" y2="59" stroke="#ffd700" strokeWidth="6" strokeLinecap="round"/>
+      <line x1="59" y1="41" x2="41" y2="59" stroke="#ffd700" strokeWidth="6" strokeLinecap="round"/>
+      {/* O - mid-right */}
+      <circle cx="83" cy="50" r="9" stroke="#ff0066" strokeWidth="5" fill="none"/>
+      {/* bottom row empty */}
+      <circle cx="17" cy="83" r="9" stroke="#ff0066" strokeWidth="5" fill="none"/>
+      <line x1="41" y1="74" x2="59" y2="92" stroke="#00f5ff" strokeWidth="5" strokeLinecap="round"/>
+      <line x1="59" y1="74" x2="41" y2="92" stroke="#00f5ff" strokeWidth="5" strokeLinecap="round"/>
+      {/* winning diagonal */}
+      <line x1="7" y1="7" x2="93" y2="93" stroke="#ffd700" strokeWidth="3" strokeOpacity="0.3" strokeLinecap="round" strokeDasharray="4 6"/>
     </svg>
   )
 }
-function OSymbol({ size=36 }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 36 36">
-      <circle cx="18" cy="18" r="11" stroke="#ff6b35" strokeWidth="4" fill="none"/>
-    </svg>
-  )
-}
 
-// ═══════════════════════════════════════════════════════════════════════════════
-//  MAIN COMPONENT
-// ═══════════════════════════════════════════════════════════════════════════════
-export default function TicTacToeGame() {
-  const { user, submitScore } = useAuth()
-  const [screen, setScreen] = useState('menu')   // 'menu'|'ai'|'pvp-lobby'|'pvp-game'
-
-  return (
-    <div>
-      {screen === 'menu'      && <MenuScreen      setScreen={setScreen} />}
-      {screen === 'ai'        && <AIGame           setScreen={setScreen} user={user} submitScore={submitScore} />}
-      {screen === 'pvp-lobby' && <PvPLobby         setScreen={setScreen} user={user} />}
-      {screen === 'pvp-game'  && <PvPLobby         setScreen={setScreen} user={user} autoJoin />}
-    </div>
-  )
-}
-
-// ─── Menu ─────────────────────────────────────────────────────────────────────
-function MenuScreen({ setScreen }) {
-  return (
-    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:'20px', padding:'40px 20px' }}>
-      {/* Big colourful logo */}
-      <div style={{ position:'relative', marginBottom:'8px' }}>
-        <svg width="110" height="110" viewBox="0 0 110 110">
-          {/* Grid lines */}
-          <line x1="37" y1="8"  x2="37" y2="102" stroke="#ffffff18" strokeWidth="3" strokeLinecap="round"/>
-          <line x1="73" y1="8"  x2="73" y2="102" stroke="#ffffff18" strokeWidth="3" strokeLinecap="round"/>
-          <line x1="8"  y1="37" x2="102" y2="37" stroke="#ffffff18" strokeWidth="3" strokeLinecap="round"/>
-          <line x1="8"  y1="73" x2="102" y2="73" stroke="#ffffff18" strokeWidth="3" strokeLinecap="round"/>
-          {/* X  top-left */}
-          <line x1="14" y1="14" x2="30" y2="30" stroke="#00f5ff" strokeWidth="4.5" strokeLinecap="round"/>
-          <line x1="30" y1="14" x2="14" y2="30" stroke="#00f5ff" strokeWidth="4.5" strokeLinecap="round"/>
-          {/* O  top-right */}
-          <circle cx="88" cy="22" r="10" stroke="#ff6b35" strokeWidth="4" fill="none"/>
-          {/* O  center */}
-          <circle cx="55" cy="55" r="10" stroke="#bf00ff" strokeWidth="4" fill="none"/>
-          {/* X  bottom-right */}
-          <line x1="79" y1="79" x2="95" y2="95" stroke="#ffd700" strokeWidth="4.5" strokeLinecap="round"/>
-          <line x1="95" y1="79" x2="79" y2="95" stroke="#ffd700" strokeWidth="4.5" strokeLinecap="round"/>
-          {/* Win diagonal line */}
-          <line x1="14" y1="95" x2="95" y2="14" stroke="#00ff88" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="6 4" opacity="0.6"/>
-        </svg>
-      </div>
-
-      <div style={{ textAlign:'center' }}>
-        <h1 style={{ fontSize:'32px', fontWeight:900, fontFamily:'var(--font-display)',
-          background:'linear-gradient(135deg,#00f5ff,#bf00ff,#ff6b35)',
-          WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent', marginBottom:'6px' }}>
-          TIC TAC TOE
-        </h1>
-        <p style={{ color:'var(--text-muted)', fontSize:'13px' }}>
-          Play vs Minimax AI — or challenge a friend live!
-        </p>
-      </div>
-
-      <div style={{ display:'flex', flexDirection:'column', gap:'12px', width:'100%', maxWidth:'340px' }}>
-        <ModeCard
-          icon={<svg width="36" height="36" viewBox="0 0 36 36"><circle cx="18" cy="18" r="14" fill="none" stroke="#00f5ff" strokeWidth="2"/><text x="18" y="23" textAnchor="middle" fill="#00f5ff" fontSize="14" fontWeight="bold">AI</text></svg>}
-          title="vs Minimax AI"
-          sub="Easy · Medium · Hard — play solo"
-          color="#00f5ff"
-          onClick={() => setScreen('ai')}
-        />
-        <ModeCard
-          icon={<svg width="36" height="36" viewBox="0 0 36 36"><circle cx="12" cy="13" r="6" fill="none" stroke="#bf00ff" strokeWidth="2.5"/><circle cx="24" cy="13" r="6" fill="none" stroke="#ff6b35" strokeWidth="2.5"/><path d="M4 30 Q12 22 20 26 Q28 22 32 30" stroke="#ffd700" strokeWidth="2" fill="none"/></svg>}
-          title="Live PvP"
-          sub="Invite a friend — real-time match!"
-          color="#bf00ff"
-          onClick={() => setScreen('pvp-lobby')}
-          badge="🔴 LIVE"
-        />
-      </div>
-    </div>
-  )
-}
-
-function ModeCard({ icon, title, sub, color, onClick, badge }) {
-  const [hov, setHov] = useState(false)
-  return (
-    <button onClick={onClick}
-      onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
-      style={{ display:'flex', alignItems:'center', gap:'16px', padding:'18px 22px',
-        borderRadius:'16px', background:hov?`${color}15`:`${color}08`,
-        border:`2px solid ${hov?color:color+'40'}`,
-        cursor:'pointer', textAlign:'left', transition:'all 0.2s',
-        transform:hov?'translateY(-2px)':'none' }}>
-      <div style={{ flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center',
-        width:'52px', height:'52px', borderRadius:'12px', background:`${color}15`,
-        border:`1px solid ${color}30` }}>{icon}</div>
-      <div style={{ flex:1 }}>
-        <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
-          <span style={{ fontSize:'17px', fontWeight:800, color:'var(--text-primary)' }}>{title}</span>
-          {badge && <span style={{ fontSize:'10px', fontWeight:700, padding:'2px 7px',
-            borderRadius:'99px', background:'rgba(255,0,0,0.15)', color:'#ff4466',
-            border:'1px solid rgba(255,0,0,0.3)', animation:'pulse-glow 1.5s infinite' }}>{badge}</span>}
-        </div>
-        <div style={{ fontSize:'12px', color:'var(--text-muted)', marginTop:'2px' }}>{sub}</div>
-      </div>
-      <span style={{ color, fontSize:'20px', opacity:hov?1:0.5 }}>›</span>
-    </button>
-  )
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-//  AI GAME
-// ═══════════════════════════════════════════════════════════════════════════════
-function AIGame({ setScreen, user, submitScore }) {
-  const [difficulty, setDiff] = useState('medium')
-  const [board,  setBoard]  = useState(Array(9).fill(null))
-  const [xIsNext,setX]      = useState(true)
-  const [result, setResult] = useState(null)   // {winner, line}
-  const [busy,   setBusy]   = useState(false)
-  const [scores, setScores] = useState({ X:0, O:0, D:0 })
-  const [lastCell,setLast]  = useState(null)
-  const aiThink = useRef(false)
-
-  // XP & toast on result
-  useEffect(() => {
-    if (!result) return
-    const xp = result.winner==='X'?100:result.winner==='draw'?40:10
-    const msg = result.winner==='X'?`🎉 You win! +${xp} XP`
-              : result.winner==='draw'?`🤝 Draw! +${xp} XP`
-              : `🤖 AI wins! +${xp} XP`
-    toast(msg, { icon: result.winner==='X'?'🏆':result.winner==='draw'?'🤝':'💀',
-      style:{ background:'var(--bg-card)', color:'var(--text-primary)', border:'1px solid var(--border-dim)' }})
-    submitScore?.('tictactoe', xp, difficulty, result.winner==='X'?'win':result.winner==='draw'?'draw':'loss', {})
-    setScores(s => result.winner==='X'?{...s,X:s.X+1}:result.winner==='draw'?{...s,D:s.D+1}:{...s,O:s.O+1})
-  }, [result])
-
-  // AI move
-  useEffect(() => {
-    if (xIsNext || result || aiThink.current) return
-    aiThink.current = true
-    const t = setTimeout(() => {
-      setBoard(b => {
-        const nb = [...b]
-        const idx = getBestMove([...nb], difficulty)
-        if (idx === -1) { aiThink.current=false; return nb }
-        nb[idx] = 'O'
-        setLast(idx)
-        const res = checkWinner(nb)
-        if (res) setResult(res)
-        else     setX(true)
-        aiThink.current = false
-        return nb
-      })
-    }, 420)
-    return () => clearTimeout(t)
-  }, [xIsNext, result, difficulty])
-
-  const handleClick = i => {
-    if (!xIsNext || board[i] || result || busy) return
-    const nb = [...board]; nb[i]='X'; setBoard(nb); setLast(i)
-    const res = checkWinner(nb)
-    if (res) setResult(res)
-    else     setX(false)
-  }
-
-  const reset = () => { setBoard(Array(9).fill(null)); setX(true); setResult(null); setLast(null); aiThink.current=false }
-
-  return (
-    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:'16px', padding:'8px 16px' }}>
-      {/* Back + title */}
-      <div style={{ width:'100%', maxWidth:'400px', display:'flex', alignItems:'center', gap:'10px' }}>
-        <button onClick={()=>setScreen('menu')} style={{ background:'none', border:'1px solid var(--border-dim)', borderRadius:'8px', padding:'6px 12px', color:'var(--text-muted)', cursor:'pointer', fontSize:'12px' }}>
-          ← Back
-        </button>
-        <span style={{ fontWeight:800, fontSize:'16px', color:'var(--text-primary)' }}>vs Minimax AI</span>
-        <div style={{ marginLeft:'auto', display:'flex', gap:'6px' }}>
-          {['easy','medium','hard'].map(d=>(
-            <button key={d} onClick={()=>{setDiff(d);reset()}} style={{ padding:'4px 10px', borderRadius:'99px', fontSize:'11px', fontWeight:700, cursor:'pointer', border:'1px solid', textTransform:'capitalize',
-              borderColor: difficulty===d?'#00f5ff':'var(--border-dim)',
-              background:  difficulty===d?'rgba(0,245,255,0.15)':'transparent',
-              color:       difficulty===d?'#00f5ff':'var(--text-muted)' }}>{d}</button>
-          ))}
-        </div>
-      </div>
-
-      {/* Score row */}
-      <div style={{ display:'flex', gap:'12px', width:'100%', maxWidth:'400px' }}>
-        <ScorePill label="You (X)" val={scores.X} color="#00f5ff"/>
-        <ScorePill label="Draw"    val={scores.D} color="#888"/>
-        <ScorePill label="AI (O)"  val={scores.O} color="#ff6b35"/>
-      </div>
-
-      {/* Turn indicator */}
-      <div style={{ fontSize:'13px', color:'var(--text-muted)', height:'20px' }}>
-        {result
-          ? result.winner==='draw' ? '🤝 It\'s a Draw!'
-            : result.winner==='X'  ? '🏆 You win!'
-            : '🤖 AI wins!'
-          : xIsNext ? '👆 Your turn (X)' : '🤖 AI is thinking…'}
-      </div>
-
-      {/* Board */}
-      <Board board={board} winLine={result?.line??[]} lastCell={lastCell}
-        onCell={handleClick} disabled={!xIsNext||!!result} symbolX={<XSymbol/>} symbolO={<OSymbol/>}/>
-
-      {/* Actions */}
-      <button onClick={reset} style={{ padding:'10px 28px', borderRadius:'10px', fontWeight:700, fontSize:'14px', cursor:'pointer', background:'rgba(0,245,255,0.1)', border:'1px solid rgba(0,245,255,0.3)', color:'#00f5ff' }}>
-        🔄 New Game
-      </button>
-    </div>
-  )
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-//  PvP LOBBY  (invite system + live game via polling)
-// ═══════════════════════════════════════════════════════════════════════════════
-function PvPLobby({ setScreen, user }) {
-  const [view,       setView]    = useState('home')   // 'home'|'invite'|'waiting'|'incoming'|'game'
-  const [inviteUser, setInviteU] = useState('')
-  const [sending,    setSending] = useState(false)
-  const [roomId,     setRoomId]  = useState(null)
-  const [room,       setRoom]    = useState(null)
-  const [mySymbol,   setMySym]   = useState('X')
-  const [incoming,   setIncoming]= useState([])
-  const [active,     setActive]  = useState([])
+// ─── Online invite system ─────────────────────────────────────────────────────
+function OnlineLobby({ user, onRoomJoined }) {
+  const [tab,         setTab]         = useState('send')   // 'send'|'inbox'
+  const [username,    setUsername]    = useState('')
+  const [sending,     setSending]     = useState(false)
+  const [invites,     setInvites]     = useState([])
+  const [loadingInv,  setLoadingInv]  = useState(false)
+  const [myRooms,     setMyRooms]     = useState([])
+  const [countdown,   setCountdown]   = useState({})   // roomId -> secondsLeft
   const pollRef = useRef(null)
-  const timerRef= useRef(null)
-  const [inviteSeconds, setInvSec] = useState(600)   // 10 min countdown
 
-  // ── Poll for pending invites / game state ─────────────────────────────────
-  const pollPending = useCallback(async () => {
+  const fetchInvites = useCallback(async () => {
+    setLoadingInv(true)
     try {
-      const r = await API.get('/ttt/pending')
-      setIncoming(r.data.incoming || [])
-      setActive(r.data.active   || [])
+      const r = await API.get('/ttt/invites')
+      setInvites(r.data.invites || [])
+    } catch {}
+    setLoadingInv(false)
+  }, [])
+
+  const fetchMyRooms = useCallback(async () => {
+    try {
+      const r = await API.get('/ttt/myrooms')
+      setMyRooms(r.data.rooms || [])
     } catch {}
   }, [])
 
-  const pollRoom = useCallback(async (id) => {
-    try {
-      const r = await API.get(`/ttt/${id}`)
-      setRoom(r.data.room)
-      setMySym(r.data.mySymbol)
-      if (r.data.room.status === 'active' && view !== 'game') setView('game')
-      if (r.data.room.status === 'declined') {
-        toast.error('Invite declined!', {style:{background:'var(--bg-card)',color:'var(--text-primary)'}})
-        setView('home'); setRoomId(null)
-      }
-    } catch {}
-  }, [view])
-
-  // Auto-poll
+  // Poll every 3s
   useEffect(() => {
-    pollPending()
-    pollRef.current = setInterval(() => {
-      pollPending()
-      if (roomId) pollRoom(roomId)
-    }, POLL_MS)
+    fetchInvites(); fetchMyRooms()
+    pollRef.current = setInterval(() => { fetchInvites(); fetchMyRooms() }, 3000)
     return () => clearInterval(pollRef.current)
-  }, [pollPending, pollRoom, roomId])
+  }, [])
 
-  // Invite countdown timer
+  // Countdown timers
   useEffect(() => {
-    if (view === 'waiting') {
-      setInvSec(600)
-      timerRef.current = setInterval(() => {
-        setInvSec(s => {
-          if (s <= 1) {
-            clearInterval(timerRef.current)
-            setView('home'); setRoomId(null)
-            toast('⏰ Invite expired', {style:{background:'var(--bg-card)',color:'var(--text-primary)'}})
-            return 0
-          }
-          return s - 1
-        })
-      }, 1000)
-    } else {
-      clearInterval(timerRef.current)
-    }
-    return () => clearInterval(timerRef.current)
-  }, [view])
+    const tid = setInterval(() => {
+      const now = Date.now()
+      const c = {}
+      ;[...invites, ...myRooms].forEach(r => {
+        const left = Math.max(0, Math.floor((new Date(r.expiresAt) - now) / 1000))
+        c[r.roomId] = left
+      })
+      setCountdown(c)
+    }, 1000)
+    return () => clearInterval(tid)
+  }, [invites, myRooms])
 
-  // ── Send invite ───────────────────────────────────────────────────────────
+  // Auto-join if a room we created/accepted becomes 'playing'
+  useEffect(() => {
+    const playing = myRooms.find(r => r.status === 'playing')
+    if (playing) onRoomJoined(playing)
+  }, [myRooms])
+
   const sendInvite = async () => {
-    if (!inviteUser.trim()) return
+    if (!username.trim()) return
     setSending(true)
     try {
-      const r = await API.post('/ttt/invite', { toUsername: inviteUser.trim() })
-      setRoomId(r.data.roomId)
-      setView('waiting')
-      toast.success(`Invite sent to ${inviteUser}!`, {style:{background:'var(--bg-card)',color:'var(--text-primary)'}})
-    } catch (e) {
-      toast.error(e.response?.data?.message || 'Failed to send invite', {style:{background:'var(--bg-card)',color:'var(--text-primary)'}})
-    } finally {
-      setSending(false)
+      const r = await API.post('/ttt/invite', { opponentUsername: username.trim() })
+      toast.success(`✅ Invite sent to ${username.trim()}! Waiting…`)
+      setUsername('')
+      fetchMyRooms()
+    } catch(e) {
+      toast.error(e.response?.data?.message || 'Failed to send invite')
+    }
+    setSending(false)
+  }
+
+  const acceptInvite = async (roomId) => {
+    try {
+      const r = await API.post('/ttt/accept', { roomId })
+      toast.success('✅ Accepted! Game starting…')
+      onRoomJoined(r.data.room)
+    } catch(e) {
+      toast.error(e.response?.data?.message || 'Failed to accept')
+      fetchInvites()
     }
   }
 
-  // ── Accept / Decline ──────────────────────────────────────────────────────
-  const acceptInvite = async (id) => {
+  const declineInvite = async (roomId) => {
     try {
-      await API.post(`/ttt/${id}/accept`)
-      setRoomId(id)
-      await pollRoom(id)
-      setView('game')
-    } catch (e) {
-      toast.error('Failed to accept')
-    }
-  }
-  const declineInvite = async (id) => {
-    try {
-      await API.post(`/ttt/${id}/decline`)
-      setIncoming(inc => inc.filter(i=>i._id!==id))
+      await API.post('/ttt/decline', { roomId })
+      toast('Declined')
+      fetchInvites()
     } catch {}
   }
 
-  // ── Resume active game ────────────────────────────────────────────────────
-  const resumeGame = async (id) => {
-    setRoomId(id)
-    await pollRoom(id)
-    setView('game')
-  }
-
-  // ── Leave game ────────────────────────────────────────────────────────────
-  const leaveGame = async () => {
-    if (roomId) {
-      try { await API.post(`/ttt/${roomId}/leave`) } catch {}
-    }
-    setView('home'); setRoomId(null); setRoom(null)
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  if (view === 'game' && room) {
-    return <PvPGame room={room} mySymbol={mySymbol}
-      onMove={async i => {
-        try {
-          const r = await API.post(`/ttt/${roomId}/move`, { index: i })
-          setRoom(r.data.room)
-        } catch (e) {
-          toast.error(e.response?.data?.message || 'Invalid move',{style:{background:'var(--bg-card)',color:'var(--text-primary)'}})
-        }
-      }}
-      onRematch={async () => {
-        try {
-          const r = await API.post(`/ttt/${roomId}/rematch`)
-          setRoom(r.data.room)
-        } catch {}
-      }}
-      onLeave={leaveGame}
-      pollRoom={() => pollRoom(roomId)}
-    />
+  const fmtTime = (secs) => {
+    if (!secs) return '0:00'
+    const m = Math.floor(secs/60), s = secs%60
+    return `${m}:${s.toString().padStart(2,'0')}`
   }
 
   return (
-    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:'20px', padding:'16px 20px' }}>
-      {/* Back */}
-      <div style={{ width:'100%', maxWidth:'500px', display:'flex', alignItems:'center', gap:'10px' }}>
-        <button onClick={()=>setScreen('menu')} style={{ background:'none', border:'1px solid var(--border-dim)', borderRadius:'8px', padding:'6px 12px', color:'var(--text-muted)', cursor:'pointer', fontSize:'12px' }}>
-          ← Back
-        </button>
-        <span style={{ fontWeight:800, fontSize:'16px' }}>🔴 Live PvP</span>
+    <div style={{ maxWidth:'480px', margin:'0 auto', padding:'20px' }}>
+      <div style={{ textAlign:'center', marginBottom:'20px' }}>
+        <TicTacToeLogo size={44}/>
+        <h3 style={{ margin:'8px 0 4px', fontSize:'18px', fontWeight:900 }}>Online 2-Player</h3>
+        <p style={{ color:'var(--text-muted)', fontSize:'13px' }}>
+          Send an invite to a friend. They accept within 10 minutes — game starts!
+        </p>
       </div>
 
-      {/* Incoming invites banner */}
-      {incoming.length > 0 && (
-        <div style={{ width:'100%', maxWidth:'500px' }}>
-          <div style={{ fontSize:'12px', fontWeight:700, color:'#ffd700', marginBottom:'8px', letterSpacing:'0.05em' }}>
-            📬 INCOMING INVITES
+      {/* Tabs */}
+      <div style={{ display:'flex', gap:'6px', marginBottom:'18px' }}>
+        {[{k:'send',l:'📤 Send Invite'},{k:'inbox',l:`📥 Inbox ${invites.length?`(${invites.length})`:''}`}].map(({k,l})=>(
+          <button key={k} onClick={()=>setTab(k)} style={{
+            flex:1, padding:'8px', borderRadius:'8px', cursor:'pointer', fontWeight:700, fontSize:'13px',
+            background:tab===k?'rgba(0,245,255,0.12)':'var(--bg-elevated)',
+            color:tab===k?'var(--neon-cyan)':'var(--text-muted)',
+            border:`1px solid ${tab===k?'rgba(0,245,255,0.4)':'var(--border-dim)'}`,
+          }}>{l}</button>
+        ))}
+      </div>
+
+      {tab === 'send' && (
+        <div>
+          <div style={{ marginBottom:'14px' }}>
+            <label style={{ fontSize:'12px', color:'var(--text-muted)', marginBottom:'6px', display:'block' }}>
+              Enter opponent's username:
+            </label>
+            <div style={{ display:'flex', gap:'8px' }}>
+              <input value={username} onChange={e=>setUsername(e.target.value)}
+                onKeyDown={e=>e.key==='Enter'&&sendInvite()}
+                placeholder="Username…"
+                style={{ flex:1, padding:'10px 14px', borderRadius:'10px', border:'1px solid var(--border-dim)',
+                  background:'var(--bg-elevated)', color:'var(--text-primary)', fontSize:'14px' }}/>
+              <button onClick={sendInvite} disabled={sending||!username.trim()} className="btn btn-primary"
+                style={{ padding:'10px 18px', opacity:sending||!username.trim()?0.5:1 }}>
+                {sending?'…':'Send →'}
+              </button>
+            </div>
           </div>
-          {incoming.map(inv => {
-            const secsLeft = Math.max(0, 600 - Math.round((Date.now()-new Date(inv.createdAt))/1000))
-            const mins = Math.floor(secsLeft/60), secs=(secsLeft%60).toString().padStart(2,'0')
-            return (
-              <div key={inv._id} style={{ display:'flex', alignItems:'center', gap:'12px',
-                padding:'14px 16px', borderRadius:'12px', marginBottom:'8px',
-                background:'rgba(191,0,255,0.08)', border:'2px solid rgba(191,0,255,0.4)',
-                animation:'pulse-glow 2s ease-in-out infinite' }}>
-                <div style={{ fontSize:'24px' }}>🎯</div>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontWeight:700, color:'var(--text-primary)', fontSize:'14px' }}>
-                    <span style={{ color:'#bf00ff' }}>{inv.playerX.username}</span> challenged you!
+
+          {/* Pending outgoing rooms */}
+          {myRooms.filter(r=>r.challenger.username===user.username&&r.status==='waiting').map(r=>(
+            <div key={r.roomId} style={{ padding:'12px 14px', borderRadius:'10px', marginBottom:'8px',
+              background:'rgba(255,215,0,0.06)', border:'1px solid rgba(255,215,0,0.2)' }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                <div>
+                  <div style={{ fontWeight:700, fontSize:'13px', color:'var(--neon-gold)' }}>
+                    ⏳ Waiting for {r.opponent.username}…
                   </div>
                   <div style={{ fontSize:'11px', color:'var(--text-muted)', marginTop:'2px' }}>
-                    Expires in <span style={{ color: secsLeft<60?'#ff4466':'#ffd700', fontWeight:700 }}>{mins}:{secs}</span>
+                    Room: <span style={{ fontFamily:'var(--font-mono)', color:'var(--neon-cyan)' }}>{r.roomId}</span>
                   </div>
                 </div>
-                <button onClick={()=>acceptInvite(inv._id)} style={{ padding:'8px 16px', borderRadius:'8px', background:'rgba(0,255,136,0.15)', border:'1px solid rgba(0,255,136,0.4)', color:'#00ff88', cursor:'pointer', fontWeight:700, fontSize:'13px' }}>
-                  Accept ✓
-                </button>
-                <button onClick={()=>declineInvite(inv._id)} style={{ padding:'8px 12px', borderRadius:'8px', background:'rgba(255,0,0,0.1)', border:'1px solid rgba(255,0,0,0.3)', color:'#ff4466', cursor:'pointer', fontSize:'13px' }}>
-                  ✕
-                </button>
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      {/* Active games */}
-      {active.length > 0 && (
-        <div style={{ width:'100%', maxWidth:'500px' }}>
-          <div style={{ fontSize:'12px', fontWeight:700, color:'#00f5ff', marginBottom:'8px', letterSpacing:'0.05em' }}>
-            ⚔️ ACTIVE GAMES
-          </div>
-          {active.map(r => (
-            <button key={r._id} onClick={()=>resumeGame(r._id)} style={{ width:'100%', display:'flex', alignItems:'center', gap:'12px',
-              padding:'12px 16px', borderRadius:'12px', marginBottom:'8px',
-              background:'rgba(0,245,255,0.06)', border:'1px solid rgba(0,245,255,0.25)',
-              cursor:'pointer', textAlign:'left' }}>
-              <div style={{ fontSize:'22px' }}>🎯</div>
-              <div>
-                <div style={{ fontWeight:700, color:'#00f5ff', fontSize:'13px' }}>
-                  {r.playerX.username} vs {r.playerO.username}
+                <div style={{ textAlign:'right' }}>
+                  <div style={{ fontSize:'18px', fontWeight:900, color: (countdown[r.roomId]||0)<60?'#ff4466':'#ffd700',
+                    fontFamily:'var(--font-mono)' }}>
+                    {fmtTime(countdown[r.roomId])}
+                  </div>
+                  <div style={{ fontSize:'10px', color:'var(--text-muted)' }}>to accept</div>
                 </div>
-                <div style={{ fontSize:'11px', color:'var(--text-muted)' }}>Turn: {r.turn} · Tap to resume</div>
               </div>
-              <span style={{ marginLeft:'auto', color:'#00f5ff', fontSize:'18px' }}>›</span>
-            </button>
+            </div>
           ))}
+
+          <div style={{ marginTop:'18px', padding:'12px', borderRadius:'10px',
+            background:'rgba(0,245,255,0.04)', border:'1px solid rgba(0,245,255,0.1)',
+            fontSize:'12px', color:'var(--text-muted)', lineHeight:1.7 }}>
+            💡 The other player must be logged in and check their <strong style={{color:'var(--neon-cyan)'}}>Inbox tab</strong>.<br/>
+            Invite expires in <strong style={{color:'#ffd700'}}>10 minutes</strong>. Win → +150 XP · Draw → +50 XP.
+          </div>
         </div>
       )}
 
-      {/* Waiting state */}
-      {view === 'waiting' ? (
-        <div style={{ width:'100%', maxWidth:'500px', padding:'32px', textAlign:'center',
-          background:'rgba(191,0,255,0.06)', border:'2px solid rgba(191,0,255,0.3)', borderRadius:'16px' }}>
-          <div style={{ fontSize:'48px', marginBottom:'12px', animation:'float 2s ease-in-out infinite' }}>⏳</div>
-          <div style={{ fontWeight:800, fontSize:'18px', marginBottom:'6px' }}>Waiting for {inviteUser}…</div>
-          <div style={{ fontSize:'13px', color:'var(--text-muted)', marginBottom:'16px' }}>
-            They have <span style={{ color:'#ffd700', fontWeight:700 }}>
-              {Math.floor(inviteSeconds/60)}:{(inviteSeconds%60).toString().padStart(2,'0')}
-            </span> to accept
-          </div>
-          <div style={{ display:'flex', gap:'8px', justifyContent:'center' }}>
-            {[0,1,2].map(i=>(
-              <div key={i} style={{ width:'8px',height:'8px',borderRadius:'50%',background:'#bf00ff',
-                animation:`pulse-glow 1.2s ease-in-out ${i*0.4}s infinite` }}/>
-            ))}
-          </div>
-          <button onClick={()=>{setView('home');setRoomId(null)}} style={{ marginTop:'20px', padding:'8px 20px', borderRadius:'8px', background:'rgba(255,0,0,0.1)', border:'1px solid rgba(255,0,0,0.25)', color:'#ff4466', cursor:'pointer', fontSize:'12px' }}>
-            Cancel invite
-          </button>
-        </div>
-      ) : (
-        /* Send invite panel */
-        <div style={{ width:'100%', maxWidth:'500px', padding:'28px',
-          background:'var(--bg-card)', border:'1px solid var(--border-dim)', borderRadius:'16px' }}>
-          <div style={{ fontWeight:800, fontSize:'16px', marginBottom:'6px' }}>Challenge a Friend</div>
-          <div style={{ fontSize:'12px', color:'var(--text-muted)', marginBottom:'18px' }}>
-            Enter their exact username. They'll receive an invite — they have <strong style={{color:'#ffd700'}}>10 minutes</strong> to accept!
-          </div>
-          <div style={{ display:'flex', gap:'8px' }}>
-            <input
-              value={inviteUser}
-              onChange={e=>setInviteU(e.target.value)}
-              onKeyDown={e=>e.key==='Enter'&&sendInvite()}
-              placeholder="Enter username…"
-              style={{ flex:1, padding:'10px 14px', borderRadius:'10px',
-                border:'1px solid var(--border-dim)', background:'var(--bg-elevated)',
-                color:'var(--text-primary)', fontSize:'14px', outline:'none' }}
-            />
-            <button onClick={sendInvite} disabled={sending||!inviteUser.trim()} style={{ padding:'10px 20px', borderRadius:'10px', fontWeight:700, fontSize:'14px', cursor:'pointer',
-              background: inviteUser.trim()?'rgba(191,0,255,0.2)':'var(--bg-elevated)',
-              border:`1px solid ${inviteUser.trim()?'#bf00ff':'var(--border-dim)'}`,
-              color: inviteUser.trim()?'#bf00ff':'var(--text-muted)', transition:'all 0.2s' }}>
-              {sending ? '…' : 'Send 📨'}
-            </button>
-          </div>
-
-          <div style={{ marginTop:'20px', padding:'14px', borderRadius:'10px',
-            background:'rgba(0,245,255,0.04)', border:'1px solid rgba(0,245,255,0.1)',
-            fontSize:'12px', color:'var(--text-muted)', lineHeight:1.8 }}>
-            <strong style={{color:'var(--neon-cyan)'}}>How it works:</strong>
-            <br/>① You enter their username → invite is sent
-            <br/>② They see a notification in their PvP tab
-            <br/>③ Both of you play live — board updates every 2 seconds!
-          </div>
+      {tab === 'inbox' && (
+        <div>
+          {loadingInv && invites.length===0 && (
+            <div style={{ textAlign:'center', padding:'20px', color:'var(--text-muted)' }}>Checking…</div>
+          )}
+          {!loadingInv && invites.length===0 && (
+            <div style={{ textAlign:'center', padding:'30px', color:'var(--text-muted)' }}>
+              <div style={{ fontSize:'36px', marginBottom:'8px' }}>📭</div>
+              No pending game invites.<br/>
+              <span style={{ fontSize:'12px' }}>Ask a friend to send you one!</span>
+            </div>
+          )}
+          {invites.map(inv => (
+            <div key={inv.roomId} style={{ padding:'14px 16px', borderRadius:'12px', marginBottom:'10px',
+              background:'rgba(255,0,102,0.06)', border:'1px solid rgba(255,0,102,0.25)',
+              display:'flex', alignItems:'center', gap:'12px' }}>
+              {/* Avatar */}
+              <div style={{ width:'40px', height:'40px', borderRadius:'50%', flexShrink:0,
+                background:'linear-gradient(135deg,#ff0066,#bf00ff)',
+                display:'flex', alignItems:'center', justifyContent:'center',
+                fontSize:'16px', fontWeight:900, color:'#fff' }}>
+                {inv.challenger.username[0].toUpperCase()}
+              </div>
+              <div style={{ flex:1 }}>
+                <div style={{ fontWeight:700, fontSize:'14px' }}>
+                  <span style={{ color:'#ff0066' }}>{inv.challenger.username}</span> challenged you!
+                </div>
+                <div style={{ fontSize:'11px', color:'var(--text-muted)', marginTop:'2px' }}>
+                  Expires in <span style={{ color:(countdown[inv.roomId]||0)<60?'#ff4466':'#ffd700', fontWeight:700 }}>
+                    {fmtTime(countdown[inv.roomId])}
+                  </span>
+                </div>
+              </div>
+              <div style={{ display:'flex', gap:'6px', flexShrink:0 }}>
+                <button onClick={()=>acceptInvite(inv.roomId)} className="btn btn-primary"
+                  style={{ padding:'7px 14px', fontSize:'12px', background:'#00ff88', color:'#000', border:'none' }}>
+                  ✓ Accept
+                </button>
+                <button onClick={()=>declineInvite(inv.roomId)}
+                  style={{ padding:'7px 10px', fontSize:'12px', borderRadius:'8px', cursor:'pointer',
+                    background:'none', border:'1px solid rgba(255,68,102,0.4)', color:'#ff4466' }}>
+                  ✗
+                </button>
+              </div>
+            </div>
+          ))}
+          {invites.length>0&&<div style={{ fontSize:'11px', color:'var(--text-muted)', textAlign:'center', marginTop:'8px' }}>
+            Auto-refreshes every 3 seconds
+          </div>}
         </div>
       )}
     </div>
   )
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-//  PvP LIVE GAME
-// ═══════════════════════════════════════════════════════════════════════════════
-function PvPGame({ room: initialRoom, mySymbol, onMove, onRematch, onLeave, pollRoom }) {
-  const [room, setRoom]       = useState(initialRoom)
-  const [lastCell, setLastC]  = useState(null)
+// ─── Online game board ────────────────────────────────────────────────────────
+function OnlineGame({ user, room: initialRoom, onBack }) {
+  const [room,    setRoom]    = useState(initialRoom)
+  const [moving,  setMoving]  = useState(false)
+  const [animCells, setAnimCells] = useState([])
   const pollRef = useRef(null)
 
-  // Keep polling so both screens stay in sync
+  const isChallenger = room.challenger.username === user.username
+  const myMark  = isChallenger ? 'X' : 'O'
+  const oppName = isChallenger ? room.opponent.username : room.challenger.username
+
+  const fetchRoom = useCallback(async () => {
+    try {
+      const r = await API.get(`/ttt/room/${room.roomId}`)
+      const newRoom = r.data.room
+      // detect new move for animation
+      if (newRoom.moveCount > room.moveCount) {
+        const diff = newRoom.board.findIndex((v,i)=>v&&!room.board[i])
+        if (diff>=0) setAnimCells(c=>[...c,diff])
+        setRoom(newRoom)
+      } else {
+        setRoom(newRoom)
+      }
+    } catch {}
+  }, [room.roomId, room.moveCount, room.board])
+
   useEffect(() => {
-    pollRef.current = setInterval(async () => {
-      try {
-        const r = await pollRoom()  // parent already updates room for us
-      } catch {}
-    }, POLL_MS)
+    pollRef.current = setInterval(fetchRoom, 1500)
     return () => clearInterval(pollRef.current)
-  }, [pollRoom])
+  }, [fetchRoom])
 
-  // Sync room from parent
-  useEffect(() => { setRoom(initialRoom) }, [initialRoom])
+  useEffect(() => {
+    if (room.status === 'finished') clearInterval(pollRef.current)
+  }, [room.status])
 
-  const isMyTurn  = room.turn === mySymbol && room.status === 'active'
-  const opponent  = mySymbol==='X' ? room.playerO.username : room.playerX.username
-  const myWins    = mySymbol==='X' ? room.scoreX : room.scoreO
-  const oppWins   = mySymbol==='X' ? room.scoreO : room.scoreX
-  const iFinished = room.status === 'finished'
-  const iWon      = iFinished && room.winner === mySymbol
-  const isDraw    = iFinished && room.winner === 'draw'
-  const myRematch = mySymbol==='X' ? room.rematchRequestX : room.rematchRequestO
-  const oppRematch= mySymbol==='X' ? room.rematchRequestO : room.rematchRequestX
-
-  const handleCell = async i => {
-    if (!isMyTurn || room.board[i] || iFinished) return
-    setLastC(i)
-    await onMove(i)
+  const makeMove = async (i) => {
+    if (room.turn !== myMark || room.board[i] || room.status !== 'playing' || moving) return
+    setMoving(true)
+    try {
+      const r = await API.post('/ttt/move', { roomId: room.roomId, cellIndex: i })
+      setAnimCells(c=>[...c,i])
+      setRoom(r.data.room)
+    } catch(e) {
+      toast.error(e.response?.data?.message || 'Move failed')
+    }
+    setMoving(false)
   }
 
+  const isMyTurn  = room.turn === myMark && room.status === 'playing'
+  const isDone    = room.status === 'finished'
+  const iWon      = isDone && room.winner === myMark
+  const oppWon    = isDone && room.winner && room.winner !== 'draw' && room.winner !== myMark
+  const isDraw    = isDone && room.winner === 'draw'
+
+  useEffect(() => {
+    if (!isDone) return
+    if (iWon)    toast.success('🎉 You won! +150 XP')
+    else if(oppWon) toast.error(`${oppName} wins!`)
+    else if(isDraw) toast('🤝 Draw! +50 XP')
+  }, [isDone])
+
   return (
-    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:'14px', padding:'8px 16px' }}>
+    <div style={{ maxWidth:'480px', margin:'0 auto', padding:'20px', textAlign:'center' }}>
       {/* Header */}
-      <div style={{ width:'100%', maxWidth:'420px', display:'flex', alignItems:'center', gap:'8px' }}>
-        <button onClick={onLeave} style={{ background:'none', border:'1px solid var(--border-dim)', borderRadius:'8px', padding:'5px 10px', color:'var(--text-muted)', cursor:'pointer', fontSize:'12px' }}>
-          ← Leave
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'14px' }}>
+        <button onClick={onBack} style={{ background:'none', border:'1px solid var(--border-dim)',
+          borderRadius:'8px', color:'var(--text-muted)', padding:'6px 12px', cursor:'pointer', fontSize:'12px' }}>
+          ← Back
         </button>
-        <div style={{ flex:1, textAlign:'center' }}>
-          <span style={{ fontWeight:800, fontSize:'14px', color:'#00f5ff' }}>You ({mySymbol})</span>
-          <span style={{ color:'var(--text-muted)', fontSize:'12px', margin:'0 8px' }}>vs</span>
-          <span style={{ fontWeight:800, fontSize:'14px', color:'#ff6b35' }}>{opponent} ({mySymbol==='X'?'O':'X'})</span>
+        <div style={{ textAlign:'center' }}>
+          <div style={{ fontSize:'12px', color:'var(--text-muted)' }}>Online · Room</div>
+          <div style={{ fontFamily:'var(--font-mono)', fontSize:'14px', fontWeight:700, color:'var(--neon-cyan)' }}>
+            {room.roomId}
+          </div>
         </div>
-        <div style={{ width:'8px',height:'8px',borderRadius:'50%',
-          background: room.status==='active'?'#00ff88':'#ff4466',
-          boxShadow: room.status==='active'?'0 0 8px #00ff88':'none' }}/>
+        <div style={{ width:'70px' }}/>
       </div>
 
-      {/* Scores */}
-      <div style={{ display:'flex', gap:'12px', width:'100%', maxWidth:'420px' }}>
-        <ScorePill label={`You (${mySymbol})`} val={myWins}    color={mySymbol==='X'?'#00f5ff':'#ff6b35'}/>
-        <ScorePill label="Draw"                val={room.draws} color="#888"/>
-        <ScorePill label={`${opponent}`}       val={oppWins}   color={mySymbol==='X'?'#ff6b35':'#00f5ff'}/>
+      {/* Players */}
+      <div style={{ display:'flex', alignItems:'center', gap:'10px', justifyContent:'center', marginBottom:'16px' }}>
+        <PlayerChip name={user.username} mark="X" color={CLR.X} active={room.turn==='X'&&!isDone} isMe />
+        <div style={{ fontSize:'16px', fontWeight:900, color:'var(--text-muted)' }}>VS</div>
+        <PlayerChip name={oppName} mark="O" color={CLR.O} active={room.turn==='O'&&!isDone} />
       </div>
 
-      {/* Turn indicator */}
-      <div style={{ fontSize:'13px', height:'20px',
-        color: iFinished?(iWon?'#00ff88':isDraw?'#ffd700':'#ff4466'):(isMyTurn?'#00ff88':'var(--text-muted)') }}>
-        {iFinished
-          ? iWon ? '🏆 You win this round!' : isDraw ? '🤝 Draw!' : `💀 ${opponent} wins this round!`
-          : isMyTurn ? '👆 Your turn!' : `⏳ Waiting for ${opponent}…`}
+      {/* Status */}
+      <div style={{ minHeight:'28px', display:'flex', alignItems:'center', justifyContent:'center',
+        marginBottom:'14px', fontSize:'14px', fontWeight:700 }}>
+        {isDone
+          ? <span style={{ color: iWon?CLR.X:oppWon?CLR.O:CLR.draw }}>
+              {iWon?'🎉 You win! +150 XP':oppWon?`${oppName} wins!`:'🤝 Draw! +50 XP'}
+            </span>
+          : isMyTurn
+            ? <span style={{ color:CLR.X }}>Your turn — you are <strong>{myMark}</strong></span>
+            : <span style={{ color:'var(--text-muted)' }}>Waiting for {oppName}…</span>
+        }
       </div>
 
       {/* Board */}
-      <Board board={room.board} winLine={room.winLine??[]} lastCell={lastCell}
-        onCell={handleCell}
-        disabled={!isMyTurn || iFinished}
-        symbolX={<XSymbol/>} symbolO={<OSymbol/>}/>
+      <Board board={room.board} winLine={room.winLine||[]} onCell={makeMove}
+        myMark={myMark} isMyTurn={isMyTurn} animCells={animCells} disabled={isDone||moving} />
 
-      {/* Rematch / Leave */}
-      {iFinished && (
-        <div style={{ display:'flex', gap:'10px' }}>
-          <button onClick={onRematch} style={{ padding:'10px 22px', borderRadius:'10px', fontWeight:700, fontSize:'13px', cursor:'pointer',
-            background: myRematch?'rgba(0,255,136,0.2)':'rgba(0,245,255,0.1)',
-            border:`1px solid ${myRematch?'#00ff88':'rgba(0,245,255,0.3)'}`,
-            color: myRematch?'#00ff88':'#00f5ff' }}>
-            {myRematch
-              ? oppRematch ? '🔄 Starting…' : `✓ Waiting for ${opponent}…`
-              : '🔄 Rematch'}
+      {isDone && (
+        <button onClick={onBack} className="btn btn-primary" style={{ marginTop:'16px' }}>
+          Back to Lobby
+        </button>
+      )}
+
+      <div style={{ marginTop:'12px', fontSize:'11px', color:'var(--text-muted)' }}>
+        {isMyTurn?'🟢 Your turn':'⏳ Waiting…'} · Auto-sync every 1.5s
+      </div>
+    </div>
+  )
+}
+
+function PlayerChip({ name, mark, color, active, isMe }) {
+  return (
+    <div style={{ padding:'8px 14px', borderRadius:'10px', minWidth:'120px',
+      background:active?`${color}15`:'var(--bg-elevated)',
+      border:`2px solid ${active?color:color+'30'}`,
+      transition:'all 0.3s' }}>
+      <div style={{ fontSize:'20px', fontWeight:900, color, lineHeight:1 }}>{mark==='X'?'✕':'◯'}</div>
+      <div style={{ fontSize:'12px', fontWeight:700, marginTop:'3px',
+        color:active?color:'var(--text-muted)',
+        whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',maxWidth:'110px' }}>
+        {name}{isMe?' (You)':''}
+      </div>
+    </div>
+  )
+}
+
+// ─── Shared board component ───────────────────────────────────────────────────
+function Board({ board, winLine, onCell, myMark, isMyTurn, animCells, disabled, turnForLocal, localTurn }) {
+  const normalizedBoard = board.map(v => v === '' ? null : v)
+  const activeTurn = localTurn || myMark
+  return (
+    <div style={{ display:'inline-grid', gridTemplateColumns:'repeat(3,1fr)', gap:'8px',
+      padding:'14px', borderRadius:'18px', background:'var(--bg-elevated)',
+      border:'1px solid var(--border-dim)' }}>
+      {normalizedBoard.map((cell,i) => {
+        const isWin = winLine.includes(i)
+        const color = cell==='X'?CLR.X:CLR.O
+        const canClick = !disabled && !cell && (isMyTurn !== undefined ? isMyTurn : turnForLocal===cell||!cell)
+        return (
+          <button key={i} onClick={()=>onCell(i)} style={{
+            width:'100px', height:'100px', borderRadius:'12px',
+            background: isWin?`${color}20`:cell?`${color}08`:'var(--bg-card)',
+            border:`2px solid ${isWin?color:cell?color+'50':'var(--border-dim)'}`,
+            display:'flex', alignItems:'center', justifyContent:'center',
+            fontSize:'44px', fontWeight:900, color,
+            boxShadow: isWin?`0 0 20px ${color}60`:'none',
+            cursor: canClick?'pointer':'default',
+            transition:'all 0.15s',
+          }}
+          onMouseEnter={e=>{ if(canClick){ e.currentTarget.style.borderColor=color; e.currentTarget.style.background=`${color}12` }}}
+          onMouseLeave={e=>{ if(canClick){ e.currentTarget.style.borderColor='var(--border-dim)'; e.currentTarget.style.background='var(--bg-card)' }}}>
+            {cell && (
+              <span style={{ animation:animCells?.includes(i)?'tttPop 0.28s ease-out':'none', display:'inline-block' }}>
+                {cell==='X'?'✕':'◯'}
+              </span>
+            )}
           </button>
-          <button onClick={onLeave} style={{ padding:'10px 22px', borderRadius:'10px', fontWeight:700, fontSize:'13px', cursor:'pointer', background:'rgba(255,0,0,0.1)', border:'1px solid rgba(255,0,0,0.25)', color:'#ff4466' }}>
-            Leave
-          </button>
+        )
+      })}
+      <style>{`@keyframes tttPop{0%{transform:scale(0.2);opacity:0}65%{transform:scale(1.25)}100%{transform:scale(1);opacity:1}}`}</style>
+    </div>
+  )
+}
+
+// ─── Local vs AI game ─────────────────────────────────────────────────────────
+function AIGame({ user, difficulty, onBack }) {
+  const { submitScore } = useAuth()
+  // Keep submitScore ref stable so handleResult useCallback never captures stale version
+  const submitScoreRef = useRef(submitScore)
+  useEffect(() => { submitScoreRef.current = submitScore }, [submitScore])
+  const [board,    setBoard]    = useState(Array(9).fill(null))
+  const [turn,     setTurn]     = useState('X')
+  const [result,   setResult]   = useState(null)
+  const [thinking, setThinking] = useState(false)
+  const [scores,   setScores]   = useState({X:0,O:0,draw:0})
+  const [winLine,  setWinLine]  = useState([])
+  const [lastMove, setLastMove] = useState(null)
+  const [animCells,setAnimCells]=useState([])
+
+  const handleResult = useCallback((res) => {
+    setScores(s=>({...s,[res.winner]:(s[res.winner]||0)+1}))
+    if(res.winner==='X'){toast.success('🎉 You won!');submitScoreRef.current('tictactoe',100,difficulty,'win').catch(e=>console.error('Score submit:',e))}
+    else if(res.winner==='O'){toast.error('🤖 AI wins!');submitScoreRef.current('tictactoe',10,difficulty,'loss').catch(e=>console.error('Score submit:',e))}
+    else{toast('🤝 Draw!');submitScoreRef.current('tictactoe',40,difficulty,'draw').catch(e=>console.error('Score submit:',e))}
+  },[difficulty])
+
+  useEffect(() => {
+    if(turn!=='O'||result)return
+    setThinking(true)
+    const t=setTimeout(()=>{
+      setBoard(prev=>{
+        const next=[...prev]
+        const move=getBestMove([...next],difficulty)
+        if(move===-1){setThinking(false);return prev}
+        next[move]='O'; setLastMove(move); setAnimCells(c=>[...c,move])
+        const res=checkWinner(next.map(v=>v||''))
+        if(res){setWinLine(res.line);setResult(res);handleResult(res)}else setTurn('X')
+        setThinking(false); return next
+      })
+    }, difficulty==='hard'?600:400)
+    return()=>clearTimeout(t)
+  },[turn,result,difficulty,handleResult])
+
+  const handleClick=(i)=>{
+    if(board[i]||result||thinking||turn!=='X')return
+    const next=[...board]; next[i]='X'; setLastMove(i); setAnimCells(c=>[...c,i])
+    const res=checkWinner(next.map(v=>v||''))
+    setBoard(next)
+    if(res){setWinLine(res.line);setResult(res);handleResult(res)}else setTurn('O')
+  }
+
+  const reset=()=>{setBoard(Array(9).fill(null));setTurn('X');setResult(null);setWinLine([]);setLastMove(null);setAnimCells([])}
+
+  const xn=user?.username||'You', on='AI'
+  return (
+    <div style={{maxWidth:'480px',margin:'0 auto',padding:'20px',textAlign:'center'}}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'12px'}}>
+        <button onClick={onBack} style={{background:'none',border:'1px solid var(--border-dim)',borderRadius:'8px',color:'var(--text-muted)',padding:'6px 12px',cursor:'pointer',fontSize:'12px'}}>← Menu</button>
+        <div style={{fontSize:'13px',fontWeight:700,color:'var(--text-secondary)'}}>vs AI · {DIFF_INFO[difficulty].label}</div>
+        <button onClick={reset} style={{background:'none',border:'1px solid var(--border-dim)',borderRadius:'8px',color:'var(--text-muted)',padding:'6px 12px',cursor:'pointer',fontSize:'12px'}}>↺ New</button>
+      </div>
+      {/* Scores */}
+      <div style={{display:'flex',gap:'8px',justifyContent:'center',marginBottom:'14px'}}>
+        {[{sym:'X',l:xn,c:CLR.X},{sym:'draw',l:'Draw',c:CLR.draw},{sym:'O',l:on,c:CLR.O}].map(({sym,l,c})=>(
+          <div key={sym} style={{flex:1,padding:'8px 4px',borderRadius:'10px',
+            background:turn===sym&&!result?`${c}15`:'var(--bg-card)',
+            border:`1px solid ${turn===sym&&!result?c:c+'30'}`,transition:'all 0.3s'}}>
+            <div style={{fontSize:'20px',fontWeight:900,color:c}}>{scores[sym]||0}</div>
+            <div style={{fontSize:'10px',color:'var(--text-muted)',marginTop:'2px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{l}</div>
+          </div>
+        ))}
+      </div>
+      {/* Status */}
+      <div style={{minHeight:'26px',marginBottom:'12px',fontSize:'13px',fontWeight:700}}>
+        {result?<span style={{color:result.winner==='draw'?CLR.draw:result.winner==='X'?CLR.X:CLR.O}}>
+          {result.winner==='draw'?'🤝 Draw!':result.winner==='X'?`🎉 ${xn} wins!`:'🤖 AI wins!'}
+        </span>:thinking?<span style={{color:'var(--text-muted)'}}>🤖 Thinking…</span>
+        :<span style={{color:turn==='X'?CLR.X:CLR.O}}>
+          {turn==='X'?`${xn}'s turn`:`${on}'s turn`} — <strong style={{color:turn==='X'?CLR.X:CLR.O}}>{turn}</strong>
+        </span>}
+      </div>
+      <Board board={board.map(v=>v||'')} winLine={winLine} onCell={handleClick}
+        myMark="X" isMyTurn={turn==='X'&&!result&&!thinking} animCells={animCells} disabled={!!result||thinking} />
+      {result&&(
+        <div style={{display:'flex',gap:'10px',justifyContent:'center',marginTop:'16px'}}>
+          <button className="btn btn-primary" onClick={reset}>Play Again</button>
         </div>
       )}
     </div>
   )
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-//  SHARED BOARD
-// ═══════════════════════════════════════════════════════════════════════════════
-function Board({ board, winLine, lastCell, onCell, disabled, symbolX, symbolO }) {
+// ─── Local PvP ────────────────────────────────────────────────────────────────
+function PvPGame({ onBack }) {
+  const [board,    setBoard]    = useState(Array(9).fill(null))
+  const [turn,     setTurn]     = useState('X')
+  const [result,   setResult]   = useState(null)
+  const [scores,   setScores]   = useState({X:0,O:0,draw:0})
+  const [winLine,  setWinLine]  = useState([])
+  const [animCells,setAnimCells]=useState([])
+  const [p1,setP1]=useState('Player 1')
+  const [p2,setP2]=useState('Player 2')
+
+  const handleClick=(i)=>{
+    if(board[i]||result)return
+    const next=[...board]; next[i]=turn; setAnimCells(c=>[...c,i])
+    const res=checkWinner(next.map(v=>v||''))
+    setBoard(next)
+    if(res){
+      setWinLine(res.line);setResult(res)
+      setScores(s=>({...s,[res.winner]:(s[res.winner]||0)+1}))
+      if(res.winner==='draw') toast('🤝 Draw!')
+      else toast.success(`🎉 ${res.winner==='X'?p1:p2} wins!`)
+    } else setTurn(t=>t==='X'?'O':'X')
+  }
+  const reset=()=>{setBoard(Array(9).fill(null));setTurn('X');setResult(null);setWinLine([]);setAnimCells([])}
+
   return (
-    <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:'8px',
-      width:'min(360px, 90vw)', padding:'12px',
-      background:'rgba(255,255,255,0.03)', borderRadius:'16px',
-      border:'1px solid rgba(255,255,255,0.07)' }}>
-      {board.map((val, i) => {
-        const isWin   = winLine.includes(i)
-        const isLast  = lastCell === i
-        return (
-          <button key={i} onClick={()=>onCell(i)} disabled={disabled||!!val}
-            style={{ aspectRatio:'1', borderRadius:'12px', cursor:(!disabled&&!val)?'pointer':'default',
-              display:'flex', alignItems:'center', justifyContent:'center',
-              background: isWin  ? 'rgba(0,255,136,0.15)'
-                        : isLast ? 'rgba(255,255,255,0.07)'
-                        : 'rgba(255,255,255,0.04)',
-              border: `2px solid ${isWin?'rgba(0,255,136,0.5)':isLast?'rgba(255,255,255,0.15)':'rgba(255,255,255,0.07)'}`,
-              transition:'all 0.15s',
-              transform: isLast?'scale(1.04)':'none',
-              boxShadow: isWin?'0 0 16px rgba(0,255,136,0.3)':'none',
-            }}
-            onMouseEnter={e=>{ if(!disabled&&!val) e.currentTarget.style.background='rgba(255,255,255,0.08)' }}
-            onMouseLeave={e=>{ if(!isWin&&!isLast) e.currentTarget.style.background=isWin?'rgba(0,255,136,0.15)':'rgba(255,255,255,0.04)' }}>
-            {val==='X' && symbolX}
-            {val==='O' && symbolO}
-          </button>
-        )
-      })}
+    <div style={{maxWidth:'480px',margin:'0 auto',padding:'20px',textAlign:'center'}}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'12px'}}>
+        <button onClick={onBack} style={{background:'none',border:'1px solid var(--border-dim)',borderRadius:'8px',color:'var(--text-muted)',padding:'6px 12px',cursor:'pointer',fontSize:'12px'}}>← Menu</button>
+        <div style={{fontSize:'13px',fontWeight:700,color:'var(--text-secondary)'}}>Local 2-Player</div>
+        <button onClick={reset} style={{background:'none',border:'1px solid var(--border-dim)',borderRadius:'8px',color:'var(--text-muted)',padding:'6px 12px',cursor:'pointer',fontSize:'12px'}}>↺ New</button>
+      </div>
+      {/* Name inputs */}
+      <div style={{display:'flex',gap:'8px',marginBottom:'12px'}}>
+        <input value={p1} onChange={e=>setP1(e.target.value)} maxLength={12}
+          style={{flex:1,padding:'6px 10px',borderRadius:'8px',background:'var(--bg-elevated)',border:`1px solid ${CLR.X}40`,color:CLR.X,fontSize:'12px',fontWeight:700,textAlign:'center'}}/>
+        <input value={p2} onChange={e=>setP2(e.target.value)} maxLength={12}
+          style={{flex:1,padding:'6px 10px',borderRadius:'8px',background:'var(--bg-elevated)',border:`1px solid ${CLR.O}40`,color:CLR.O,fontSize:'12px',fontWeight:700,textAlign:'center'}}/>
+      </div>
+      <div style={{display:'flex',gap:'8px',justifyContent:'center',marginBottom:'14px'}}>
+        {[{sym:'X',l:p1,c:CLR.X},{sym:'draw',l:'Draw',c:CLR.draw},{sym:'O',l:p2,c:CLR.O}].map(({sym,l,c})=>(
+          <div key={sym} style={{flex:1,padding:'8px 4px',borderRadius:'10px',
+            background:turn===sym&&!result?`${c}15`:'var(--bg-card)',
+            border:`1px solid ${turn===sym&&!result?c:c+'30'}`,transition:'all 0.3s'}}>
+            <div style={{fontSize:'20px',fontWeight:900,color:c}}>{scores[sym]||0}</div>
+            <div style={{fontSize:'10px',color:'var(--text-muted)',marginTop:'2px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{l}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{minHeight:'26px',marginBottom:'12px',fontSize:'13px',fontWeight:700}}>
+        {result?<span style={{color:result.winner==='draw'?CLR.draw:result.winner==='X'?CLR.X:CLR.O}}>
+          {result.winner==='draw'?'🤝 Draw!':result.winner==='X'?`🎉 ${p1} wins!`:`🎉 ${p2} wins!`}
+        </span>:<span style={{color:turn==='X'?CLR.X:CLR.O}}>{turn==='X'?p1:p2}'s turn</span>}
+      </div>
+      <Board board={board.map(v=>v||'')} winLine={winLine} onCell={handleClick}
+        myMark={turn} isMyTurn={!result} animCells={animCells} disabled={!!result} />
+      {result&&<button className="btn btn-primary" onClick={reset} style={{marginTop:'16px'}}>Play Again</button>}
     </div>
   )
 }
 
-function ScorePill({ label, val, color }) {
+// ─── Main component ───────────────────────────────────────────────────────────
+export default function TicTacToeGame() {
+  const { user } = useAuth()
+  const [mode,       setMode]       = useState(null)  // null|'ai'|'pvp'|'online'
+  const [difficulty, setDifficulty] = useState('medium')
+  const [onlineRoom, setOnlineRoom] = useState(null)
+
+  // Menu
+  if (!mode) return (
+    <div style={{maxWidth:'520px',margin:'0 auto',padding:'28px 20px',textAlign:'center'}}>
+      {/* Colourful logo */}
+      <div style={{display:'flex',justifyContent:'center',marginBottom:'12px'}}>
+        <TicTacToeLogo size={68}/>
+      </div>
+      <h2 style={{fontSize:'26px',fontWeight:900,fontFamily:'var(--font-display)',marginBottom:'4px',letterSpacing:'-0.02em'}}>
+        Tic Tac Toe
+      </h2>
+      <p style={{color:'var(--text-secondary)',fontSize:'13px',marginBottom:'28px'}}>
+        3 modes · AI · Local · Online real-time
+      </p>
+
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'12px',marginBottom:'24px'}}>
+        {/* vs AI */}
+        <button onClick={()=>setMode('ai')} style={{
+          padding:'20px 10px',borderRadius:'14px',cursor:'pointer',textAlign:'center',
+          background:'rgba(0,245,255,0.08)',border:'2px solid rgba(0,245,255,0.3)',transition:'all 0.2s',
+        }}
+        onMouseEnter={e=>e.currentTarget.style.borderColor='#00f5ff'}
+        onMouseLeave={e=>e.currentTarget.style.borderColor='rgba(0,245,255,0.3)'}>
+          <div style={{fontSize:'32px',marginBottom:'6px'}}>🤖</div>
+          <div style={{fontWeight:800,fontSize:'14px',color:'var(--neon-cyan)',marginBottom:'3px'}}>vs AI</div>
+          <div style={{fontSize:'11px',color:'var(--text-muted)'}}>Minimax engine</div>
+        </button>
+        {/* Local 2P */}
+        <button onClick={()=>setMode('pvp')} style={{
+          padding:'20px 10px',borderRadius:'14px',cursor:'pointer',textAlign:'center',
+          background:'rgba(255,0,102,0.08)',border:'2px solid rgba(255,0,102,0.3)',transition:'all 0.2s',
+        }}
+        onMouseEnter={e=>e.currentTarget.style.borderColor='#ff0066'}
+        onMouseLeave={e=>e.currentTarget.style.borderColor='rgba(255,0,102,0.3)'}>
+          <div style={{fontSize:'32px',marginBottom:'6px'}}>🎮</div>
+          <div style={{fontWeight:800,fontSize:'14px',color:'#ff0066',marginBottom:'3px'}}>Local 2P</div>
+          <div style={{fontSize:'11px',color:'var(--text-muted)'}}>Same device</div>
+        </button>
+        {/* Online */}
+        <button onClick={()=>user?setMode('online'):toast.error('Login to play online!')} style={{
+          padding:'20px 10px',borderRadius:'14px',cursor:'pointer',textAlign:'center',
+          background:'rgba(255,215,0,0.08)',border:'2px solid rgba(255,215,0,0.3)',transition:'all 0.2s',
+          position:'relative',
+        }}
+        onMouseEnter={e=>e.currentTarget.style.borderColor='#ffd700'}
+        onMouseLeave={e=>e.currentTarget.style.borderColor='rgba(255,215,0,0.3)'}>
+          <div style={{position:'absolute',top:'-8px',left:'50%',transform:'translateX(-50%)',
+            background:'linear-gradient(135deg,#ffd700,#ff6b00)',color:'#000',
+            fontSize:'9px',fontWeight:800,padding:'2px 8px',borderRadius:'99px',letterSpacing:'0.08em',whiteSpace:'nowrap'}}>
+            🌐 ONLINE
+          </div>
+          <div style={{fontSize:'32px',marginBottom:'6px',marginTop:'6px'}}>🌍</div>
+          <div style={{fontWeight:800,fontSize:'14px',color:'#ffd700',marginBottom:'3px'}}>Online PvP</div>
+          <div style={{fontSize:'11px',color:'var(--text-muted)'}}>2 accounts</div>
+        </button>
+      </div>
+
+      {/* Difficulty for AI mode */}
+      <div style={{marginBottom:'6px',fontSize:'11px',color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.1em'}}>AI Difficulty</div>
+      <div style={{display:'flex',gap:'8px',justifyContent:'center',marginBottom:'20px'}}>
+        {Object.entries(DIFF_INFO).map(([k,d])=>(
+          <button key={k} onClick={()=>setDifficulty(k)} style={{
+            padding:'7px 16px',borderRadius:'99px',cursor:'pointer',fontWeight:700,fontSize:'13px',
+            background:difficulty===k?d.color+'22':'var(--bg-elevated)',
+            color:difficulty===k?d.color:'var(--text-muted)',
+            border:`1px solid ${difficulty===k?d.color:d.color+'20'}`,transition:'all 0.2s',
+          }}>{d.label}</button>
+        ))}
+      </div>
+      <div style={{fontSize:'11px',color:'var(--text-muted)'}}>
+        🏆 Win vs AI → +100 XP &nbsp;·&nbsp; Online win → +150 XP &nbsp;·&nbsp; Draw → +50 XP
+      </div>
+    </div>
+  )
+
+  if (mode==='ai')  return <AIGame user={user} difficulty={difficulty} onBack={()=>setMode(null)}/>
+  if (mode==='pvp') return <PvPGame onBack={()=>setMode(null)}/>
+  if (mode==='online') {
+    if (onlineRoom) return <OnlineGame user={user} room={onlineRoom} onBack={()=>{setOnlineRoom(null);setMode('online')}}/>
+    return <OnlineLobby user={user} onRoomJoined={r=>{setOnlineRoom(r)}}/>
+  }
+
+  // back button from online lobby
   return (
-    <div style={{ flex:1, textAlign:'center', padding:'8px 6px', borderRadius:'10px',
-      background:`${color}10`, border:`1px solid ${color}30` }}>
-      <div style={{ fontSize:'20px', fontWeight:900, color, fontFamily:'var(--font-display)' }}>{val}</div>
-      <div style={{ fontSize:'10px', color:'var(--text-muted)', letterSpacing:'0.05em', marginTop:'1px' }}>{label}</div>
+    <div style={{textAlign:'center',padding:'40px'}}>
+      <button onClick={()=>setMode(null)} className="btn btn-ghost">← Back to Mode Select</button>
     </div>
   )
 }

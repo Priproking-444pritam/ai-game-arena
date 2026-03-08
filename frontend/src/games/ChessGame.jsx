@@ -149,6 +149,12 @@ export default function ChessGame() {
   const [lastMove,   setLastMove]   = useState(null)
   const [check,      setCheck]      = useState(false)
 
+  // Refs to avoid stale closures in async effects
+  const submitScoreRef = useRef(submitScore)
+  useEffect(() => { submitScoreRef.current = submitScore }, [submitScore])
+  const historyRef = useRef(history)
+  useEffect(() => { historyRef.current = history }, [history])
+
   const checkStatus = useCallback((b, color) => {
     const moves = getAllLegalMoves(b, color)
     if (!moves.length) {
@@ -174,7 +180,7 @@ export default function ChessGame() {
       setHistory(h=>[...h,{from,to,piece:board[from]}])
       const st = checkStatus(next,'w')
       setStatus(st); setCheck(st==='check')
-      if (st==='checkmate') { toast.error('Checkmate! AI wins 🤖'); submitScore('chess',0,diff,'loss',{moves:history.length}).catch(()=>{}) }
+      if (st==='checkmate') { toast.error('Checkmate! AI wins 🤖'); submitScoreRef.current('chess',0,diff,'loss',{moves:historyRef.current.length}).catch(e=>console.error('Score submit:',e)) }
       else if (st==='stalemate') { toast('🤝 Stalemate!') }
       setTurn('w'); setThinking(false)
     }, diff==='hard'?800:500)
@@ -196,7 +202,7 @@ export default function ChessGame() {
         setHistory(h=>[...h,{from:selected,to:idx,piece:board[selected]}])
         const st = checkStatus(next,'b')
         setStatus(st); setCheck(false)
-        if (st==='checkmate') { toast.success('Checkmate! You win! 🎉'); submitScore('chess',500,diff,'win',{moves:history.length+1}).catch(()=>{}) }
+        if (st==='checkmate') { toast.success('Checkmate! You win! 🎉'); submitScoreRef.current('chess',500,diff,'win',{moves:historyRef.current.length+1}).catch(e=>console.error('Score submit:',e)) }
         else if (st==='stalemate') toast('🤝 Stalemate!')
         setTurn('b')
       }

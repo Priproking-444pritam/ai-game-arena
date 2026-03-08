@@ -21,27 +21,41 @@ const submitScore = async (req, res) => {
       metadata: metadata || {}
     });
 
-    // Update user stats
+    // Update user stats atomically — avoids Mongoose validation on save()
     const xpGain = result === 'win' ? 50 : result === 'completed' ? 20 : 10;
-    const isWin = result === 'win';
+    const isWin  = result === 'win';
 
-    const user = await User.findById(req.user._id);
-    user.totalGamesPlayed += 1;
-    if (isWin) user.totalWins += 1;
-    user.xp += xpGain;
-    user.level = Math.floor(user.xp / 200) + 1;
-    await user.save();
+    // $inc is atomic and skips pre-save hooks/validation entirely
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user._id,
+      {
+        $inc: {
+          xp: xpGain,
+          totalGamesPlayed: 1,
+          totalWins: isWin ? 1 : 0
+        }
+      },
+      { new: true }   // return updated document
+    );
+
+    // Recalculate level from new XP and persist it
+    const newLevel = Math.floor(updatedUser.xp / 200) + 1;
+    if (updatedUser.level !== newLevel) {
+      await User.findByIdAndUpdate(req.user._id, { level: newLevel });
+      updatedUser.level = newLevel;
+    }
 
     res.status(201).json({
       success: true,
       message: 'Score submitted!',
       score: newScore,
       xpGained: xpGain,
-      newLevel: user.level,
-      newXP: user.xp
+      newLevel: updatedUser.level,
+      newXP: updatedUser.xp
     });
   } catch (err) {
-    res.status(500).json({ success: false, message: 'Server error' });
+    console.error('Score controller error:', err.message);
+    res.status(500).json({ success: false, message: err.message || 'Server error' });
   }
 };
 
@@ -87,7 +101,8 @@ const getLeaderboard = async (req, res) => {
 
     res.json({ success: true, leaderboard });
   } catch (err) {
-    res.status(500).json({ success: false, message: 'Server error' });
+    console.error('Score controller error:', err.message);
+    res.status(500).json({ success: false, message: err.message || 'Server error' });
   }
 };
 
@@ -102,7 +117,8 @@ const getMyScores = async (req, res) => {
 
     res.json({ success: true, scores });
   } catch (err) {
-    res.status(500).json({ success: false, message: 'Server error' });
+    console.error('Score controller error:', err.message);
+    res.status(500).json({ success: false, message: err.message || 'Server error' });
   }
 };
 
@@ -118,7 +134,8 @@ const getGlobalStats = async (req, res) => {
 
     res.json({ success: true, totalGames, totalUsers, gameStats });
   } catch (err) {
-    res.status(500).json({ success: false, message: 'Server error' });
+    console.error('Score controller error:', err.message);
+    res.status(500).json({ success: false, message: err.message || 'Server error' });
   }
 };
 
@@ -133,7 +150,8 @@ const getRecentScores = async (req, res) => {
       .select('game score difficulty result metadata createdAt');
     res.json({ success: true, scores });
   } catch (err) {
-    res.status(500).json({ success: false, message: 'Server error' });
+    console.error('Score controller error:', err.message);
+    res.status(500).json({ success: false, message: err.message || 'Server error' });
   }
 };
 
@@ -164,7 +182,8 @@ const getLeaderboardWithWL = async (req, res) => {
     const leaderboard = await Score.aggregate(pipeline);
     res.json({ success: true, leaderboard });
   } catch (err) {
-    res.status(500).json({ success: false, message: 'Server error' });
+    console.error('Score controller error:', err.message);
+    res.status(500).json({ success: false, message: err.message || 'Server error' });
   }
 };
 

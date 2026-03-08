@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 
 const AuthContext = createContext();
@@ -52,11 +52,12 @@ export function AuthProvider({ children }) {
     setUser(res.data.user);
   };
 
-  const submitScore = async (game, score, difficulty, result, metadata) => {
+  const submitScore = useCallback(async (game, score, difficulty, result, metadata) => {
     const res = await API.post('/scores', { game, score, difficulty, result, metadata });
     if (res.data.success) await refreshUser();
     return res.data;
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const getLeaderboard = async (game) => {
     const res = await API.get(`/scores/leaderboard/${game}`);

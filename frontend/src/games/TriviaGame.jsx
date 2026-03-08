@@ -95,6 +95,9 @@ function getQuestions(topic, count=8) {
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function TriviaGame() {
   const { user, submitScore } = useAuth()
+  // Ref keeps submitScore stable across renders in the phase useEffect
+  const submitScoreRef = useRef(submitScore)
+  useEffect(() => { submitScoreRef.current = submitScore }, [submitScore])
   const [phase,     setPhase]     = useState('menu')   // menu|playing|result
   const [topic,     setTopic]     = useState(TOPICS[0])
   const [diff,      setDiff]      = useState('medium')
@@ -109,6 +112,10 @@ export default function TriviaGame() {
   const [timeLeft,  setTimeLeft]  = useState(0)
   const [answers,   setAnswers]   = useState([])  // track per-question result
   const timerRef = useRef(null)
+  // Refs to hold final values at game-end (avoid stale closure in useEffect)
+  const finalScoreRef   = useRef(0)
+  const finalCorrectRef = useRef(0)
+  const finalStreakRef  = useRef(0)
 
   const d = DIFF[diff]
 
@@ -116,6 +123,7 @@ export default function TriviaGame() {
     const qs = getQuestions(topic.id, 8)
     setQuestions(qs); setQIdx(0); setSelected(null); setRevealed(false)
     setScore(0); setStreak(0); setMaxStreak(0); setCorrect(0); setAnswers([])
+    finalScoreRef.current=0; finalCorrectRef.current=0; finalStreakRef.current=0
     setTimeLeft(d.time); setPhase('playing')
   }
 
@@ -147,6 +155,12 @@ export default function TriviaGame() {
     } else {
       setStreak(0)
     }
+    // Update refs with running totals so useEffect can read final values
+    const newScore   = score + pts
+    const newCorrect = isCorrect ? correct + 1 : correct
+    finalScoreRef.current   = newScore
+    finalCorrectRef.current = newCorrect
+    if (isCorrect) finalStreakRef.current = Math.max(finalStreakRef.current, streak + 1)
     setAnswers(a => [...a, { question:q.question, correct:q.correct, selected:opt, isCorrect, pts }])
     setTimeout(() => nextQ(), 1400)
   }
@@ -166,8 +180,13 @@ export default function TriviaGame() {
 
   useEffect(() => {
     if (phase !== 'result' || !answers.length) return
-    const acc = Math.round((correct / questions.length) * 100)
-    submitScore('trivia', score, diff, acc>=60?'win':'loss', {accuracy:acc,streak:maxStreak,topic:topic.id}).catch(()=>{})
+    // Use refs to get final values — avoids stale closure from functional state updates
+    const finalScore   = finalScoreRef.current
+    const finalCorrect = finalCorrectRef.current
+    const finalStreak  = finalStreakRef.current
+    const acc = Math.round((finalCorrect / questions.length) * 100)
+    submitScoreRef.current('trivia', finalScore, diff, acc>=60?'win':'loss', {accuracy:acc,streak:finalStreak,topic:topic.id})
+      .catch(err => console.error('Score submit failed:', err))
     if (acc >= 80) toast.success(`🎯 ${acc}% — Great score!`)
     else if (acc >= 60) toast('👍 ' + acc + '% — Not bad!')
     else toast.error(`💀 Only ${acc}% correct`)
