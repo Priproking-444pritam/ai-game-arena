@@ -80,6 +80,9 @@ export default function HomePage() {
                 <Link to="/login" className="btn btn-secondary" style={{ fontSize:'16px', padding:'14px 36px' }}>
                   Login
                 </Link>
+                <Link to="/guest" className="btn btn-ghost" style={{ fontSize:'16px', padding:'14px 36px' }}>
+                  🎲 Play as Guest
+                </Link>
               </>
             )}
             <Link to="/leaderboard" className="btn btn-ghost" style={{ fontSize:'16px', padding:'14px 36px' }}>

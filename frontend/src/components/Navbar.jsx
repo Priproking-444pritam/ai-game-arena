@@ -174,6 +174,7 @@ export default function Navbar() {
           {[
             { path: '/', label: 'Home' },
             { path: '/games', label: '🕹 Games', protected: true },
+            ...(!user ? [{ path: '/guest', label: '🎲 Play as Guest' }] : []),
             { path: '/leaderboard', label: '🏆 Ranks' },
             ...(user ? [{ path: '/dashboard', label: '⚡ Dashboard' }] : [])
           ].map(({ path, label, protected: prot }) => (
@@ -204,6 +205,9 @@ export default function Navbar() {
             <UserMenu user={user} onLogout={handleLogout} />
           ) : (
             <>
+              <Link to="/guest" className="btn btn-ghost" style={{ padding: '8px 18px', fontSize: '13px' }}>
+                Play as Guest
+              </Link>
               <Link to="/login" className="btn btn-ghost" style={{ padding: '8px 18px', fontSize: '13px' }}>
                 Login
               </Link>

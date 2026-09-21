@@ -6,6 +6,7 @@ import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
 import DashboardPage from './pages/DashboardPage'
 import GameHubPage from './pages/GameHubPage'
+import GuestPage from './pages/GuestPage'
 import LeaderboardPage from './pages/LeaderboardPage'
 import ProfilePage from './pages/ProfilePage'
 
@@ -29,6 +30,7 @@ export default function App() {
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
         <Route path="/games" element={<ProtectedRoute><GameHubPage /></ProtectedRoute>} />
+        <Route path="/guest" element={<GuestPage />} />
         <Route path="/leaderboard" element={<LeaderboardPage />} />
         <Route path="/profile/:username" element={<ProfilePage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
