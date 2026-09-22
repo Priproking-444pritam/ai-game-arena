@@ -147,10 +147,4 @@ Every 200 XP = 1 level. Each level unlocks the next game (Level 1 → Snake, Lev
 
 ---
 
-## 📄 License
-
-MIT — free to use, modify, and share.
-
----
-
 *Built with React, Node.js, MongoDB, and a lot of AI algorithms.*
